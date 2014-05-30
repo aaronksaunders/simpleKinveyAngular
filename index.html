@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kinvey File Demo</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.9/angular.min.js"></script>
+    <script src="https://da189i1jfloii.cloudfront.net/js/kinvey-angular-1.1.4.min.js"></script>
+</head>
+
+
+<body ng-app="kinveyUploadApp" ng-controller="MainCtrl as main">
+
+<input type="file" id="files" name="files[]"/>
+
+<p ng-if="main.fileModel">
+    File Size: {{main.fileModel.size}} Last Modified: {{main.fileModel['_kmd'].lmt | date:'yyyy-MM-dd HH:mm:ss Z'}}
+</p>
+
+<script>
+    angular.module('kinveyUploadApp', ['kinvey'])
+            .run(['$kinvey', function ($kinvey) {
+                // Kinvey initialization starts
+                var promise = $kinvey.init({
+                    appKey: '',
+                    appSecret: ''
+                });
+                promise.then(function () {
+                    // Kinvey initialization finished with success
+                    console.log("Kinvey init with success");
+
+                    var user = $kinvey.getActiveUser();
+                    if (null === user) {
+                        return  $kinvey.User.login({
+                            username: 'test',
+                            password: 'test'
+                        });
+                    } else {
+                        return user;
+                    }
+                }).then(function (_user) {
+                    console.log("Kinvey got user " + JSON.stringify(_user));
+                }, function (errorCallback) {
+                    // Kinvey initialization finished with error
+                    console.log("Kinvey init with error: " + JSON.stringify(errorCallback));
+                });
+            }])
+
+            .controller('MainCtrl', [ '$kinvey', function ($kinvey) {
+                var that = this;
+                this.fileModel = {};
+                this.teststring = 'test string value';
+
+                angular.element(document).find('input')[0].addEventListener('change', function (e) {
+                    var theFile = e.target.files[0];
+
+                    // save the file object
+
+                    var promise = $kinvey.File.upload(theFile, {
+                        _filename: theFile.name,
+                        public: true,
+                        size: theFile.size,
+                        mimeType: theFile.type
+                    }).then(function (_fileData) {
+                        debugger;
+                        console.log("[$upload] success: " + JSON.stringify(_fileData, null, 2));
+                        // now save the file parent, and create the relationship
+                        // using the file _id
+                        var fileParent = {
+                            title: new Date() + " Saved Parent",
+                            fileObject: {
+                                _type: 'KinveyFile',
+                                _id: _fileData._id
+                            }
+                        };
+
+                        that.fileModel = _fileData;
+
+                        return $kinvey.DataStore.save('FileParent', fileParent);
+
+                    }).then(function (_data) {
+                        console.log("[fileObject] success: " + JSON.stringify(_data, null, 2));
+                    }, function error(err) {
+                        console.log('[$upload] received error: ' + JSON.stringify(err, null, 2));
+                    });
+                }, false);
+            }]);
+</script>
+</body>
