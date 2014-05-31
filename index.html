@@ -2,58 +2,114 @@
 <html>
 <head>
     <title>Kinvey File Demo</title>
+    <style>
+        .selectedHover:hover {
+            cursor: pointer;
+            background-color: #9ff !important;
+        }
+    </style>
+    <link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css">
     <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.9/angular.min.js"></script>
-    <script src="https://da189i1jfloii.cloudfront.net/js/kinvey-angular-1.1.4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-ui-router/0.2.10/angular-ui-router.min.js"></script>
+    <script src="https://da189i1jfloii.cloudfront.net/js/kinvey-angular-1.1.7.min.js"></script>
 </head>
 
 
-<body ng-app="kinveyUploadApp" ng-controller="MainCtrl as main">
-
-<input type="file" id="files" name="files[]"/>
-
-<p ng-if="main.fileModel">
-    File Size: {{main.fileModel.size}} Last Modified: {{main.fileModel['_kmd'].lmt | date:'yyyy-MM-dd HH:mm:ss Z'}}
-</p>
+<body ng-app="kinveyUploadApp">
+<div ui-view=""></div>
 
 <script>
-    angular.module('kinveyUploadApp', ['kinvey'])
+    angular.module('kinveyUploadApp', ['kinvey', 'ui.router'])
             .run(['$kinvey', function ($kinvey) {
                 // Kinvey initialization starts
-                var promise = $kinvey.init({
-                    appKey: '',
-                    appSecret: ''
-                });
-                promise.then(function () {
-                    // Kinvey initialization finished with success
-                    console.log("Kinvey init with success");
 
-                    var user = $kinvey.getActiveUser();
-                    if (null === user) {
-                        return  $kinvey.User.login({
-                            username: 'test',
-                            password: 'test'
-                        });
-                    } else {
-                        return user;
-                    }
-                }).then(function (_user) {
-                    console.log("Kinvey got user " + JSON.stringify(_user));
-                }, function (errorCallback) {
-                    // Kinvey initialization finished with error
-                    console.log("Kinvey init with error: " + JSON.stringify(errorCallback));
-                });
             }])
+            .config(['$stateProvider', '$urlRouterProvider', function ($stateProvider, $urlRouterProvider) {
 
-            .controller('MainCtrl', [ '$kinvey', function ($kinvey) {
-                var that = this;
-                this.fileModel = {};
-                this.teststring = 'test string value';
+                $stateProvider
+                        .state('intro', {
+                            url: '/',
+                            templateUrl: 'intro.html',
+                            controller: 'IntroCtrl as intro',
+                            resolve: {
+                                authUser: function ($kinvey, $state) {
+                                    return $kinvey.init({
+                                        appKey: '',
+                                        appSecret: 'kid_eTe4yJvm4i'
+                                    });
 
-                angular.element(document).find('input')[0].addEventListener('change', function (e) {
+                                }
+                            }
+                        })
+                        .state('main', {
+                            url: '/main',
+                            templateUrl: 'main.html',
+                            controller: 'MainCtrl as main',
+                        });
+
+                $urlRouterProvider.otherwise("/");
+
+
+            }])
+            .controller('IntroCtrl', [ '$kinvey', '$state', 'authUser', function ($kinvey, $state, authUser) {
+                /**
+                 *
+                 */
+                /* model for credentials */
+                this.creds = {};
+
+
+
+                this.loginUser = function () {
+                    $kinvey.User.login(this.creds).then(function (_d) {
+                        console.log(JSON.stringify(_d));
+                        $state.go('main');
+                    }, function (_error) {
+                        console.log('[$kinvey.User.login] ' + JSON.stringify(_error));
+                    });
+                }
+
+                var user = $kinvey.getActiveUser();
+                if (user) {
+                    $state.go('main');
+                }
+
+            }])
+            .controller('MainCtrl', [ '$scope', '$kinvey', '$state', function ($scope, $kinvey, $state) {
+                $scope.fileModel = {};
+                $scope.disableUpload = true;
+                $scope.teststring = 'test string value';
+
+                $scope.mouseOverRow = function (_f) {
+                    $scope.currentElement = _f.fileObject._downloadURL;
+                    console.log($scope.currentElement);
+                };
+
+                function updateModelList() {
+                    $kinvey.DataStore.find('FileParent').then(function (_d) {
+                        $scope.models = _d;
+                        console.log(JSON.stringify(_d));
+                    }, function (_error) {
+                        console.log('[updateModelList] ' + JSON.stringify(_error));
+                    });
+                }
+
+                /**
+                 *
+                 */
+                $scope.logoutUser = function logoutUser() {
+                    var user = $kinvey.getActiveUser();
+                    if (null !== user) {
+                        var promise = $kinvey.User.logout().then(function () {
+                            $state.go('intro');
+                        });
+                    }
+                };
+
+                $scope.uploadFileClicked = function () {
                     var theFile = e.target.files[0];
 
                     // save the file object
-
                     var promise = $kinvey.File.upload(theFile, {
                         _filename: theFile.name,
                         public: true,
@@ -72,7 +128,7 @@
                             }
                         };
 
-                        that.fileModel = _fileData;
+                        $scope.fileModel = _fileData;
 
                         return $kinvey.DataStore.save('FileParent', fileParent);
 
@@ -81,7 +137,75 @@
                     }, function error(err) {
                         console.log('[$upload] received error: ' + JSON.stringify(err, null, 2));
                     });
+                }
+
+                angular.element(document).find('input')[0].addEventListener('change', function (e) {
+                    $scope.disableUpload = e.target.files[0] && "";
+                    $scope.$apply();
                 }, false);
+
+                updateModelList();
             }]);
+</script>
+
+<!-- list view template -->
+<script id="main.html" type="text/ng-template">
+
+    <div class="container">
+        <div class="row">
+            <div>
+                <input type="file" id="files" name="files[]"/>
+            </div>
+            <div>
+                <Button ng-click="uploadFileClicked()" ng-disabled=disableUpload>Upload File</Button>
+                <Button ng-click="logoutUser()">Logout</Button>
+            </div>
+        </div>
+        <!-- display -->
+        <div class="row">
+            <div class="col-md-4">
+                <p class="selectedHover" ng-repeat="f in models" ng-mouseover="mouseOverRow(f)">
+                    {{f.fileObject._filename}}</p>
+            </div>
+            <div class="col-md-8">
+                <img ng-src="{{currentElement}}" width="400">
+            </div>
+        </div>
+    </div>
+
+
+    <p ng-if="fileModel">
+        File Size: {{fileModel.size}} Last Modified: {{fileModel['_kmd'].lmt | date:'yyyy-MM-dd HH:mm:ss Z'}}
+    </p>
+</script>
+
+<!-- intro login template -->
+<script id="intro.html" type="text/ng-template">
+    <div class="container" style="margin-top:30px">
+        <div class="col-md-4 col-md-offset-4">
+            <div class="panel panel-default">
+                <div class="panel-heading"><h3 class="panel-title"><strong>Sign in </strong></h3></div>
+                <div class="panel-body">
+                    <form role="form">
+                        <div class="form-group">
+                            <label for="exampleInputEmail1">Username or Email</label>
+                            <input type="text" class="form-control" style="border-radius:0px" id="exampleInputEmail1"
+                                   ng-model="intro.creds.username" placeholder="Enter email">
+                        </div>
+                        <div class="form-group">
+                            <label for="exampleInputPassword1">Password</label>
+                            <input type="password" class="form-control" style="border-radius:0px"
+                                   id="exampleInputPassword1" ng-model="intro.creds.password" placeholder="Password">
+                        </div>
+                        <button class="" ng-click="intro.loginUser()" class="btn btn-sm btn-default">Sign in</button>
+                        <a href="/sessions/forgot_password">(forgot
+                            password)</a>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
 </script>
 </body>
